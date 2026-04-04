@@ -16,10 +16,8 @@ import { checkJailbroken } from 'download0/check-jailbroken'
   log('Loading check-jailbroken.js...')
   include('check-jailbroken.js')
 
-  if (typeof CONFIG !== 'undefined' && CONFIG.music) {
-    const audio = new jsmaf.AudioClip()
-    audio.volume = 0.5
-    audio.open('file://../download0/sfx/bgm.wav')
+  if (typeof startBgmIfEnabled === 'function') {
+    startBgmIfEnabled()
   }
 
   is_jailbroken = checkJailbroken()
@@ -87,9 +85,10 @@ import { checkJailbroken } from 'download0/check-jailbroken'
 
   if (is_jailbroken) {
     scanPaths.push('/data/payloads')
-    for (let i = 0; i <= 7; i++) {
-      scanPaths.push('/mnt/usb' + i + '/payloads')
-    }
+    // this need sandbox escape to work
+    // for (let i = 0; i <= 7; i++) {
+    //   scanPaths.push('/mnt/usb' + i + '/payloads')
+    // }
   }
 
   log('Scanning paths: ' + scanPaths.join(', '))
@@ -199,40 +198,23 @@ import { checkJailbroken } from 'download0/check-jailbroken'
     textOrigPos.push({ x: text.x, y: text.y })
   }
 
-  const exitX = 810
-  const exitY = 980
-
-  const exitButton = new Image({
-    url: normalButtonImg,
-    x: exitX,
-    y: exitY,
-    width: buttonWidth,
-    height: buttonHeight
-  })
-  buttons.push(exitButton)
-  jsmaf.root.children.push(exitButton)
-
-  const exitMarker = new Image({
-    url: 'file:///assets/img/ad_pod_marker.png',
-    x: exitX + buttonWidth - 50,
-    y: exitY + 35,
-    width: 12,
-    height: 12,
-    visible: false
-  })
-  buttonMarkers.push(exitMarker)
-  jsmaf.root.children.push(exitMarker)
-
-  const exitText = new jsmaf.Text()
-  exitText.text = 'Back'
-  exitText.x = exitX + buttonWidth / 2 - 20
-  exitText.y = exitY + buttonHeight / 2 - 12
-  exitText.style = 'white'
-  buttonTexts.push(exitText)
-  jsmaf.root.children.push(exitText)
-
-  buttonOrigPos.push({ x: exitX, y: exitY })
-  textOrigPos.push({ x: exitText.x, y: exitText.y })
+  let backHint: Image | jsmaf.Text
+  if (useImageText) {
+    backHint = new Image({
+      url: textImageBase + (jsmaf.circleIsAdvanceButton ? 'xToGoBack.png' : 'oToGoBack.png'),
+      x: 890,
+      y: 1000,
+      width: 150,
+      height: 40
+    })
+  } else {
+    backHint = new jsmaf.Text()
+    backHint.text = jsmaf.circleIsAdvanceButton ? lang.xToGoBack : lang.oToGoBack
+    backHint.x = 890
+    backHint.y = 1000
+    backHint.style = 'white'
+  }
+  jsmaf.root.children.push(backHint)
 
   let zoomInInterval: number | null = null
   let zoomOutInterval: number | null = null
@@ -354,87 +336,56 @@ import { checkJailbroken } from 'download0/check-jailbroken'
     prevButton = currentButton
   }
 
+  const confirmKey = jsmaf.circleIsAdvanceButton ? 13 : 14
+  const backKey = jsmaf.circleIsAdvanceButton ? 14 : 13
+
   jsmaf.onKeyDown = function (keyCode) {
     log('Key pressed: ' + keyCode)
 
     const fileButtonCount = fileList.length
-    const exitButtonIndex = buttons.length - 1
 
     if (keyCode === 6) {
-      if (currentButton === exitButtonIndex) {
-        return
-      }
       const nextButton = currentButton + buttonsPerRow
-      if (nextButton >= fileButtonCount) {
-        currentButton = exitButtonIndex
-      } else {
+      if (nextButton < fileButtonCount) {
         currentButton = nextButton
       }
       updateHighlight()
     } else if (keyCode === 4) {
-      if (currentButton === exitButtonIndex) {
-        const lastRow = Math.floor((fileButtonCount - 1) / buttonsPerRow)
-        const firstInLastRow = lastRow * buttonsPerRow
-        let col = 0
-        if (fileButtonCount > 0) {
-          col = Math.min(buttonsPerRow - 1, (fileButtonCount - 1) % buttonsPerRow)
-        }
-        currentButton = Math.min(firstInLastRow + col, fileButtonCount - 1)
-      } else {
-        const nextButton = currentButton - buttonsPerRow
-        if (nextButton >= 0) {
-          currentButton = nextButton
-        }
+      const nextButton = currentButton - buttonsPerRow
+      if (nextButton >= 0) {
+        currentButton = nextButton
       }
       updateHighlight()
     } else if (keyCode === 5) {
-      if (currentButton === exitButtonIndex) {
-        return
-      }
+      const nextButton = currentButton + 1
       const row = Math.floor(currentButton / buttonsPerRow)
-      const col = currentButton % buttonsPerRow
-      if (col < buttonsPerRow - 1) {
-        const nextButton = currentButton + 1
-        if (nextButton < fileButtonCount) {
-          currentButton = nextButton
-        }
+      const nextRow = Math.floor(nextButton / buttonsPerRow)
+      if (nextButton < fileButtonCount && nextRow === row) {
+        currentButton = nextButton
       }
       updateHighlight()
     } else if (keyCode === 7) {
-      if (currentButton === exitButtonIndex) {
-        currentButton = fileButtonCount - 1
-      } else {
-        const col = currentButton % buttonsPerRow
-        if (col > 0) {
-          currentButton = currentButton - 1
-        }
+      const col = currentButton % buttonsPerRow
+      if (col > 0) {
+        currentButton = currentButton - 1
       }
       updateHighlight()
-    } else if (keyCode === 14) {
+    } else if (keyCode === confirmKey) {
       handleButtonPress()
-    } else if (keyCode === 13) {
+    } else if (keyCode === backKey) {
       log('Going back to main menu...')
       try {
-        include('main-menu.js')
+        include('themes/' + (typeof CONFIG !== 'undefined' && CONFIG.theme ? CONFIG.theme : 'default') + '/main.js')
       } catch (e) {
         const err = e as Error
-        log('ERROR loading main-menu.js: ' + err.message)
+        log('ERROR loading main.js: ' + err.message)
         if (err.stack) log(err.stack)
       }
     }
   }
 
   function handleButtonPress () {
-    if (currentButton === buttons.length - 1) {
-      log('Going back to main menu...')
-      try {
-        include('main-menu.js')
-      } catch (e) {
-        const err = e as Error
-        log('ERROR loading main-menu.js: ' + err.message)
-        if (err.stack) log(err.stack)
-      }
-    } else if (currentButton < fileList.length) {
+    if (currentButton < fileList.length) {
       const selectedEntry = fileList[currentButton]
       if (!selectedEntry) {
         log('No file selected!')
@@ -448,12 +399,12 @@ import { checkJailbroken } from 'download0/check-jailbroken'
 
       try {
         if (fileName.toLowerCase().endsWith('.js')) {
-          // Local JavaScript file case (from /download0/payloads)
+          // Local JavaScript file case (from "/download0/payloads")
           if (filePath.startsWith('/download0/')) {
             log('Including JavaScript file: ' + fileName)
             include('payloads/' + fileName)
           } else {
-            // External JavaScript file case (from /data/payloads or /mnt/usbX/payloads)
+            // External JavaScript file case (from "/data/payloads")
             log('Reading external JavaScript file: ' + filePath)
             const p_addr = mem.malloc(256)
             for (let i = 0; i < filePath.length; i++) {

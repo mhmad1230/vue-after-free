@@ -4,7 +4,7 @@ import { fn, BigInt } from 'download0/types'
 
 (function () {
   include('languages.js')
-  log(lang.loadingMainMenu)
+  log('Loading main menu...')
 
   let currentButton = 0
   const buttons: Image[] = []
@@ -21,10 +21,8 @@ import { fn, BigInt } from 'download0/types'
   new Style({ name: 'white', color: 'white', size: 24 })
   new Style({ name: 'title', color: 'white', size: 32 })
 
-  if (typeof CONFIG !== 'undefined' && CONFIG.music) {
-    const audio = new jsmaf.AudioClip()
-    audio.volume = 0.5
-    audio.open('file://../download0/sfx/bgm.wav')
+  if (typeof startBgmIfEnabled === 'function') {
+    startBgmIfEnabled()
   }
 
   const background = new Image({
@@ -276,28 +274,7 @@ import { fn, BigInt } from 'download0/types'
 
   function handleButtonPress () {
     if (currentButton === buttons.length - 1) {
-      log('Exiting application...')
-      try {
-        if (typeof libc_addr === 'undefined') {
-          log('Loading userland.js...')
-          include('userland.js')
-        }
-
-        fn.register(0x14, 'getpid', [], 'bigint')
-        fn.register(0x25, 'kill', ['bigint', 'bigint'], 'bigint')
-
-        const pid = fn.getpid()
-        const pid_num = (pid instanceof BigInt) ? pid.lo : pid
-        log('Current PID: ' + pid_num)
-        log('Sending SIGKILL to PID ' + pid_num)
-
-        fn.kill(pid, new BigInt(0, 9))
-      } catch (e) {
-        log('ERROR during exit: ' + (e as Error).message)
-        if ((e as Error).stack) log((e as Error).stack!)
-      }
-
-      jsmaf.exit()
+      include('includes/kill_vue.js')
     } else if (currentButton < menuOptions.length) {
       const selectedOption = menuOptions[currentButton]
       if (!selectedOption) return
@@ -306,7 +283,11 @@ import { fn, BigInt } from 'download0/types'
       }
       log('Loading ' + selectedOption.script + '...')
       try {
-        include(selectedOption.script)
+        if (selectedOption.script.includes('loader.js')) {
+          include(selectedOption.script)
+        } else {
+          include('themes/' + (typeof CONFIG !== 'undefined' && CONFIG.theme ? CONFIG.theme : 'default') + '/' + selectedOption.script)
+        }
       } catch (e) {
         log('ERROR loading ' + selectedOption.script + ': ' + (e as Error).message)
         if ((e as Error).stack) log((e as Error).stack!)
@@ -328,5 +309,5 @@ import { fn, BigInt } from 'download0/types'
 
   updateHighlight()
 
-  log(lang.mainMenuLoaded)
+  log('Main menu loaded.')
 })()

