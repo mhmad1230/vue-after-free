@@ -29,7 +29,7 @@
 
   // نص الزر
   const text = new jsmaf.Text()
-  text.text = "Jailbreak"
+  text.text = 'Jailbreak'
   text.x = 900
   text.y = 480
   text.style = 'white'
@@ -55,5 +55,4 @@
       }
     }
   }
-
 })()
