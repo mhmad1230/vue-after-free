@@ -2059,7 +2059,7 @@ export function lapse () {
     }
 
     log('Stage 5 completed - JAILBROKEN')
-    // utils.notify("The Vue-after-Free team congratulates you\nLapse Finished OK\nEnjoy freedom");
+    // utils.notify("محمد خالد للشروحات");
 
     cleanup()
 
